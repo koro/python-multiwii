@@ -16,8 +16,13 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 
-import serial,pty,os,time
+import serial,pty,os,time,sys
+
+#if "/home/src/QK/naze32/arcospyu" not in sys.path:
+#    sys.path.insert(0, "/home/src/QK/naze32/arcospyu")
+
 from arcospyu.dprint import eprint
+# from dprint import eprint
 
 master,slave=pty.openpty()
 print os.ttyname(slave)
@@ -25,6 +30,9 @@ print "Create a symbolic link in /dev/ to the above file and use this symlink to
 #raw_input()
 
 l_time=0
+
+#def eprint(args):
+#    print(args)
 
 def send_cmd(cmd, data):
     print "Data", data
@@ -156,9 +164,9 @@ def toraw_data(data, word_size):
 
 
 def unraw_data(raw_data, word_size):
-    #print "Size", len(raw_data)/word_size
-    #print word_size
-    #print "Raw data", raw_data
+    # print "Size", len(raw_data)/word_size
+    # print word_size
+    print "Raw data", len(raw_data), raw_data
     return(struct.unpack(word_size, raw_data))
 #    data=[]
 #    for i in xrange(len(raw_data)/word_size):
@@ -169,7 +177,6 @@ def unraw_data(raw_data, word_size):
 #    return(data)
 
 class MultiwiiCopter(object):
-    MSP_SET_RAW_RC=200
     MSP_RC=105
     MSP_MOTOR=104
     MSP_RAW_IMU=102
@@ -177,10 +184,12 @@ class MultiwiiCopter(object):
     MSP_STATUS=101
     MSP_ATTITUDE=108
     MSP_RC_TUNING=111
-    MSP_CONTROL=120
+    # MSP_CONTROL=120
     MSP_RAW_GPS=106
     MSP_COMP_GPS=107
     MSP_ALTITUDE=109
+    MSP_PID = 112
+    MSP_SET_RAW_RC = 200
     MSP_ACC_CALIBRATION=205
     MSP_MAG_CALIBRATION=206
     HEADER='$M<'
@@ -191,13 +200,17 @@ class MultiwiiCopter(object):
     S_DATA=4
     S_CHECKSUM=5
     S_ERROR=6
-    #msp_dict: cmd: [cmd_data_size, response_data_size, word_size]
+    #
+    PIDITEMS = 10
+    #msp_dict: cmd: [cmd_data_size, response_data_size, response_buffer, word_size (unpack format string)]
     msp_dict={MSP_SET_RAW_RC: [16, 0, '='+'h'*8],
               MSP_RC: [0, 16, '', '='+'h'*8],
-              MSP_ATTITUDE: [0, 8, '', '='+'h'*4],
+              MSP_ATTITUDE: [0, 6, '', '='+'h'*3],
               MSP_ALTITUDE: [0, 6, '', '=ih', [0.01, 1.]],
               MSP_STATUS: [0, 11, '', '='+'hhhIB'],
-              MSP_CONTROL: [16, 14, '='+'h'*8, '='+'h'*7, [0.1, 0.1, -1., 1., 1., 1., 1.]]}
+              MSP_PID: [0, 3 * PIDITEMS, '', '=' + 'B'*3*PIDITEMS],
+              # MSP_CONTROL: [16, 14, '='+'h'*8, '='+'h'*7, [0.1, 0.1, -1., 1., 1., 1., 1.]]
+              }
 
     def __init__(self, serialport="/dev/ttyUSB0", speed=115200):
         self.ser = serial.Serial(serialport, speed, timeout=1)
@@ -345,6 +358,13 @@ class MultiwiiCopter(object):
             eprint("RC attitude didn't work!")
         return(error, cmd_resp)
 
+    def get_pid(self):
+        self.send_serial(self.MSP_PID, [])
+        error, cmd_resp=self.recv_serial()
+        if error!=0:
+            eprint("RC attitude didn't work!")
+        return(error, cmd_resp)
+        
     def get_altitude(self):
         self.send_serial(self.MSP_ALTITUDE, [])
         error, cmd_resp=self.recv_serial()
@@ -393,7 +413,8 @@ class Copter(object):
     def update_sensors(self):
         self.update_delta_time()
         #print "delta", self.delta_time
-        error, resp=self.copter_serial.control(self.cmd)
+        # error, resp=self.copter_serial.control(self.cmd)
+        error = 1
         if error==0:
             if resp[1][-1]>0:
                 self.copter_control_freq=1000000./resp[1][-1]
@@ -443,6 +464,14 @@ class Copter(object):
         print "Pos", self.x
 
 from time import time, sleep
+
+def main2():
+    copter = MultiwiiCopter()
+    while True:
+        # print "blub"
+        # print copter.get_status()
+        print copter.get_attitude()
+        sleep(0.02)
 
 def main():
     copter=Copter(speed=115200)
@@ -559,5 +588,6 @@ def main():
     
 
 if __name__=="__main__":
-    main()
+    # main()
+    main2()
 
