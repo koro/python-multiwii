@@ -16,12 +16,14 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 
-import serial,pty,os,time,sys
+import pty,os,time,sys
+from serial import Serial
+# from cereal import Cereal as Serial
 
 #if "/home/src/QK/naze32/arcospyu" not in sys.path:
 #    sys.path.insert(0, "/home/src/QK/naze32/arcospyu")
 
-from arcospyu.dprint import eprint
+# from arcospyu.dprint import eprint
 # from dprint import eprint
 
 master,slave=pty.openpty()
@@ -31,8 +33,8 @@ print "Create a symbolic link in /dev/ to the above file and use this symlink to
 
 l_time=0
 
-#def eprint(args):
-#    print(args)
+def eprint(*args):
+   print(args)
 
 def send_cmd(cmd, data):
     print "Data", data
@@ -166,7 +168,7 @@ def toraw_data(data, word_size):
 def unraw_data(raw_data, word_size):
     # print "Size", len(raw_data)/word_size
     # print word_size
-    print "Raw data", len(raw_data), raw_data
+    # print "Raw data", len(raw_data), raw_data
     return(struct.unpack(word_size, raw_data))
 #    data=[]
 #    for i in xrange(len(raw_data)/word_size):
@@ -176,20 +178,36 @@ def unraw_data(raw_data, word_size):
 #        data.append(x)
 #    return(data)
 
+class BF_PID(object):
+    PIDROLL  = 0
+    PIDPITCH = 1
+    PIDYAW   = 2
+    PIDALT   = 3
+    PIDPOS   = 4
+    PIDPOSR  = 5
+    PIDNAVR  = 6
+    PIDLEVEL = 7
+    PIDMAG   = 8
+    PIDVEL   = 9
+    PIDITEMS = 10
+
 class MultiwiiCopter(object):
-    MSP_RC=105
-    MSP_MOTOR=104
-    MSP_RAW_IMU=102
-    MSP_IDENT=100
-    MSP_STATUS=101
-    MSP_ATTITUDE=108
-    MSP_RC_TUNING=111
-    # MSP_CONTROL=120
-    MSP_RAW_GPS=106
-    MSP_COMP_GPS=107
-    MSP_ALTITUDE=109
+    MSP_IDENT     = 100
+    MSP_STATUS    = 101
+    MSP_RAW_IMU   = 102
+    MSP_SERVO     = 103
+    MSP_MOTOR     = 104
+    MSP_RC        = 105
+    MSP_RAW_GPS   = 106
+    MSP_COMP_GPS  = 107
+    MSP_ATTITUDE  = 108
+    MSP_ALTITUDE  = 109
+    MSP_ANALOG    = 110
+    MSP_RC_TUNING = 111
     MSP_PID = 112
+    # MSP_CONTROL=120
     MSP_SET_RAW_RC = 200
+    MSP_SET_PID = 202
     MSP_ACC_CALIBRATION=205
     MSP_MAG_CALIBRATION=206
     HEADER='$M<'
@@ -201,19 +219,27 @@ class MultiwiiCopter(object):
     S_CHECKSUM=5
     S_ERROR=6
     #
-    PIDITEMS = 10
-    #msp_dict: cmd: [cmd_data_size, response_data_size, response_buffer, word_size (unpack format string)]
-    msp_dict={MSP_SET_RAW_RC: [16, 0, '='+'h'*8],
-              MSP_RC: [0, 16, '', '='+'h'*8],
-              MSP_ATTITUDE: [0, 6, '', '='+'h'*3],
-              MSP_ALTITUDE: [0, 6, '', '=ih', [0.01, 1.]],
-              MSP_STATUS: [0, 11, '', '='+'hhhIB'],
-              MSP_PID: [0, 3 * PIDITEMS, '', '=' + 'B'*3*PIDITEMS],
-              # MSP_CONTROL: [16, 14, '='+'h'*8, '='+'h'*7, [0.1, 0.1, -1., 1., 1., 1., 1.]]
-              }
+    # PIDITEMS = 10
+    # format is pack/unpack format string
+    #msp_dict: cmd: [cmd_data_size, response_data_size, cmd_format, response_format]
+    msp_dict = {
+        MSP_STATUS: [0, 11, '', '='+'hhhIB'],
+        MSP_SET_RAW_RC: [16, 0, '='+'h'*8],
+        MSP_RC: [0, 16, '', '='+'h'*8],
+        MSP_ATTITUDE: [0, 6, '', '='+'h'*3],
+        MSP_ALTITUDE: [0, 6, '', '=ih', [0.01, 1.]],
+        MSP_RAW_IMU: [0, 18, '', '=' + 'h'*9],
+        MSP_RAW_GPS: [0, 16, '', '=' + 'BBiihhh'],
+        MSP_PID: [0, 3 * BF_PID.PIDITEMS, '', '=' + 'B'*3*BF_PID.PIDITEMS],
+        MSP_SET_PID: [3 * BF_PID.PIDITEMS, 0, '=' + 'B'*3*BF_PID.PIDITEMS],
+        # MSP_CONTROL: [16, 14, '='+'h'*8, '='+'h'*7, [0.1, 0.1, -1., 1., 1., 1., 1.]]
+    }
 
     def __init__(self, serialport="/dev/ttyUSB0", speed=115200):
-        self.ser = serial.Serial(serialport, speed, timeout=1)
+        self.ser = Serial(port=serialport, baudrate=speed,
+                                 timeout=1, writeTimeout=0.001,
+                                 xonxoff=False, rtscts=False, dsrdtr=False)
+        # self.ser = Serial(port=serialport, baudrate=speed, timeout=0.01)
         self.ser.flushInput()
 
     def __del__(self):
@@ -258,11 +284,11 @@ class MultiwiiCopter(object):
         checksum=0
         input_packet=''
         while (state!=self.S_END) and (state!=self.S_ERROR):
-            #print "in waiting", self.ser.inWaiting()
-        #print "Data to read", data_to_read
+            # print "in waiting", self.ser.inWaiting()
+            # print "Data to read", data_to_read
             c=self.ser.read(data_to_read)
             input_packet+=c
-            #print "c: ", map(str,c), map(ord,c)
+            # print "c: ", map(str,c), map(ord,c)
             if state==self.S_HEADER:
                 if c=='$':
                     c=self.ser.read(2)
@@ -344,34 +370,58 @@ class MultiwiiCopter(object):
             eprint("CONTROL didn't work!")
         return(error, cmd_resp)
 
-    def rc_read(self):
+    def get_rc(self):
+        """Get raw RC values"""
         self.send_serial(self.MSP_RC, [])
         error, cmd_resp=self.recv_serial()
         if error!=0:
             eprint("RC read didn't work!")
         return(error, cmd_resp)
 
+    def get_raw_imu(self):
+        self.send_serial(self.MSP_RAW_IMU, [])
+        error, cmd_resp=self.recv_serial()
+        if error!=0:
+            eprint("MSP_RAW_IMU didn't work!")
+        return(error, cmd_resp)
+
     def get_attitude(self):
         self.send_serial(self.MSP_ATTITUDE, [])
         error, cmd_resp=self.recv_serial()
         if error!=0:
-            eprint("RC attitude didn't work!")
+            eprint("MSP_ATTITUDE didn't work!")
         return(error, cmd_resp)
 
-    def get_pid(self):
-        self.send_serial(self.MSP_PID, [])
-        error, cmd_resp=self.recv_serial()
-        if error!=0:
-            eprint("RC attitude didn't work!")
-        return(error, cmd_resp)
-        
     def get_altitude(self):
         self.send_serial(self.MSP_ALTITUDE, [])
         error, cmd_resp=self.recv_serial()
         if error!=0:
-            eprint("RC ALTITUDE didn't work!")
+            eprint("MSP_ALTITUDE didn't work!")
         return(error, cmd_resp)
 
+    def get_raw_gps(self):
+        """Get raw GPS data"""
+        self.send_serial(self.MSP_RAW_GPS, [])
+        error, cmd_resp=self.recv_serial()
+        if error!=0:
+            eprint("MSP_RAW_GPS didn't work!")
+        return(error, cmd_resp)
+
+    def get_pid(self):
+        """Get PID parameter values"""
+        self.send_serial(self.MSP_PID, [])
+        error, cmd_resp=self.recv_serial()
+        if error!=0:
+            eprint("GET PID didn't work!")
+        return(error, cmd_resp)
+        
+    def set_pid(self, data):
+        self.send_serial(self.MSP_SET_PID, data)
+        error, cmd_resp=self.recv_serial()
+        if error!=0:
+            eprint("SET PID didn't work!")
+        return(error, cmd_resp)
+        
     def get_status(self):
         self.send_serial(self.MSP_STATUS, [])
         error, cmd_resp=self.recv_serial()
