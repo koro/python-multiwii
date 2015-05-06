@@ -90,10 +90,10 @@ class BaseflightOptimize(object):
             # print self.mode
 
             logdata[self.run_cnt,0] = self.mode
-            logdata[self.run_cnt,1] = self.alt
-            logdata[self.run_cnt,2] = self.vz
-            logdata[self.run_cnt,3] = self.throttle
-            logdata[self.run_cnt,4] = self.zacc
+            logdata[self.run_cnt,1] = np.clip(self.alt, -500., 1000.)
+            logdata[self.run_cnt,2] = np.clip(self.vz, -1000., 1000.)
+            logdata[self.run_cnt,3] = np.clip(self.throttle, 0., 2000.)
+            logdata[self.run_cnt,4] = np.clip(self.zacc, -1000., 1000.)
             
             if self.mode == 3 and not self.armed:
                 self.armed = True
@@ -144,7 +144,7 @@ class BaseflightOptimize(object):
         pl.show()
 
         # it was so bad, alt hold was disabled immediatly
-        if np.sum(alt_active_idx) < 100:
+        if np.sum(alt_active_idx) < 500:
             alt_mse = 1e6
             
         # generate params, set and run
@@ -154,6 +154,7 @@ class BaseflightOptimize(object):
         # compute performance
         # return np.random.uniform(0, 1)
         print "alt_mse = %f, vel_mse = %f" % (alt_mse, vel_mse)
+        print "mse total", alt_mse + vel_mse
         return (alt_mse + vel_mse)
         # return self.run_cnt
         
@@ -182,7 +183,7 @@ def main():
         ]
         
     trials = Trials()
-    best = fmin(bo.objective, space, algo=tpe.suggest, max_evals=5, trials=trials)
+    best = fmin(bo.objective, space, algo=tpe.suggest, max_evals=50, trials=trials)
     print "best", best
 
     
