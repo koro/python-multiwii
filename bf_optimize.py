@@ -4,7 +4,10 @@
 __author__ = "Oswald Berthold"
 
 # - use Trials, save it each round
-# - 
+# - use record to learn model
+# - use ITAE: integral of time weighted absolute error
+# - make mse pos and mse vel same OoM
+# - log: batt, throttle, acc
 
 import argparse, sys, time
 import numpy as np
@@ -44,7 +47,8 @@ def copter(params):
     done = False
     armed = False
     maxsamp = 1000
-    logdata = np.zeros((maxsamp, 3))
+    numdata = 5 # mode, alt, vel, throttle, acc
+    logdata = np.zeros((maxsamp, numdata))
     i = 0
 
     # start and init
@@ -54,8 +58,8 @@ def copter(params):
         # get telemetry/data
         # MSP_STATUS
         status = copter.get_status()
-        # # MSP_RAW_IMU
-        # raw_imu =  copter.get_raw_imu()
+        # MSP_RAW_IMU
+        raw_imu =  copter.get_raw_imu()
         # print "raw imu", 
         # # MSP_ATTITUDE
         # attitude = copter.get_attitude()
@@ -67,7 +71,7 @@ def copter(params):
         # raw_gps = copter.get_raw_gps()
         # # print "raw gps",  
         # MSP_RC
-        # rc = copter.get_rc()
+        rc = copter.get_rc()
         # print "rc",       
         # MSP_MOTORS
         # time.sleep(0.01)
@@ -87,6 +91,14 @@ def copter(params):
             print("ALT msg got mixed up, skipping datum")
             print copter.recv_serial()
             continue
+        if rc[1][0] != MultiwiiCopter.MSP_RC:
+            print("RC msg got mixed up, skipping datum")
+            print copter.recv_serial()
+            continue
+        if raw_imu[1][0] != MultiwiiCopter.MSP_RAW_IMU:
+            print("RAW_IMU msg got mixed up, skipping datum")
+            print copter.recv_serial()
+            continue
 
         try:
             logdata[i,0] = status[1][1][3] # mode
@@ -96,6 +108,8 @@ def copter(params):
         try:
             logdata[i,1] = altitude[1][1][0] # alt est
             logdata[i,2] = altitude[1][1][1] # vario
+            logdata[i,3] = rc[1][1][3] # throttle
+            logdata[i,4] = raw_imu[1][1][2] # acc-z
         except IndexError:
             print "invalid index", altitude
 
@@ -136,16 +150,20 @@ def copter(params):
     np.save("bf_optimize_%s_vel_target_mse" % ts, vel_target_mse_array)
         
     # in place inspection
-    pl.subplot(311)
+    pl.subplot(411)
     pl.title("mode")
     pl.plot(logdata[:,0])
-    pl.subplot(312)
+    pl.subplot(412)
     pl.title("alt")
     pl.plot(logdata[:,1])
     pl.plot(np.ones_like(logdata[:,1]) * alt_target)
-    pl.subplot(313)
+    pl.subplot(413)
     pl.title("alt vel")
     pl.plot(logdata[:,2])
+    pl.subplot(414)
+    pl.title("thr + acc z")
+    pl.plot(logdata[:,3])
+    pl.plot(logdata[:,4])
     pl.show()
 
     # it was so bad, alt hold was disabled immediatly
@@ -186,7 +204,7 @@ def main(args):
         ]
         
     trials = Trials()
-    best = fmin(objective, space, algo=tpe.suggest, max_evals=60, trials=trials)
+    best = fmin(objective, space, algo=tpe.suggest, max_evals=50, trials=trials)
     print "best", best
 
 if __name__ == "__main__":
