@@ -100,10 +100,14 @@ class BaseflightOptimize(object):
             elif self.mode == 2 and self.armed:
                 self.armed = False
                 self.running = False
-            if self.run_cnt > self.maxsamp:
-                self.running = False
+                
             self.run_cnt += 1
+            
             time.sleep(0.02)
+            
+            if self.run_cnt >= self.maxsamp:
+                self.running = False
+                
 
 
         # save data
@@ -115,16 +119,29 @@ class BaseflightOptimize(object):
         # compute performance
         # alt_active_idx = logdata[:,0] == 27 # with mag lock
         alt_active_idx = logdata[:,0] == 11
-        alt_data = logdata[alt_active_idx,1]
-        alt_target = np.mean(alt_data[0:10])
-        alt_mse = np.mean(np.square(alt_target - alt_data))
-        alt_target_mse_array = np.array((alt_target, alt_mse))
-        np.save("bf_optimize_mavlink_%s_alt_target_mse" % ts, alt_target_mse_array)
-    
-        vel_data = logdata[alt_active_idx,2]
-        vel_mse  = np.mean(np.square(vel_data))
-        vel_target_mse_array = np.array((0., vel_mse))
-        np.save("bf_optimize_mavlink_%s_vel_target_mse" % ts, vel_target_mse_array)
+        # catch empty index
+        if np.sum(alt_active_idx) == 0:
+            # set two elements True to have at least 2 element arrays below, even if they're bogus
+            alt_active_idx[0] = True 
+            alt_active_idx[1] = True
+
+        # it was so bad, alt hold was disabled immediatly
+        if np.sum(alt_active_idx) < 500:
+            alt_mse = 1e6
+            vel_mse = 1e6
+            alt_target = 0.
+            vel_target = 0.
+        else:
+            alt_data = logdata[alt_active_idx,1]
+            alt_target = np.mean(alt_data[0:10])
+            alt_mse = np.mean(np.square(alt_target - alt_data))
+        
+            vel_data = logdata[alt_active_idx,2]
+            vel_target = 0.
+            vel_mse  = np.mean(np.square(vel_target - vel_data))
+            
+        mse_array = np.array((alt_target, alt_mse, vel_target, vel_mse))
+        np.save("bf_optimize_mavlink_%s_mse" % ts, mse_array)
         
         # in place inspection
         pl.subplot(411)
@@ -143,10 +160,6 @@ class BaseflightOptimize(object):
         pl.plot(logdata[:,4])
         pl.show()
 
-        # it was so bad, alt hold was disabled immediatly
-        if np.sum(alt_active_idx) < 500:
-            alt_mse = 1e6
-            
         # generate params, set and run
         # read data
         #  - min: altitude, RC5
@@ -183,7 +196,7 @@ def main():
         ]
         
     trials = Trials()
-    best = fmin(bo.objective, space, algo=tpe.suggest, max_evals=50, trials=trials)
+    best = fmin(bo.objective, space, algo=tpe.suggest, max_evals=60, trials=trials)
     print "best", best
 
     
