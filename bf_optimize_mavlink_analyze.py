@@ -8,39 +8,9 @@ from matplotlib import cm
 import pandas as pd
 import tables as tb
 
+from bf_optimize_data import BFOptML
+
 modes = {"mse_sequential": 0, "convert_to_tables": 1}
-
-class BFOptMLParams(tb.IsDescription):
-    name = tb.StringCol(100)
-    alt_p = tb.Int32Col()
-    alt_i = tb.Int32Col()
-    alt_d = tb.Int32Col()
-    vel_p = tb.Int32Col()
-    vel_i = tb.Int32Col()
-    vel_d = tb.Int32Col()
-
-class BFOptMLTimeseries(tb.IsDescription):
-    name = tb.StringCol(100)
-    # index = tb.Int32Col()
-    mode = tb.Int16Col()
-    alt = tb.Float32Col()
-    vz = tb.Float32Col()
-    throttle = tb.Float32Col()
-    zacc = tb.Float32Col()
-    
-class BFOptMLPerf(tb.IsDescription):
-    name = tb.StringCol(100)
-    alt_target = tb.Float32Col()
-    alt_mse    = tb.Float32Col()
-    vel_target = tb.Float32Col()
-    vel_mse    = tb.Float32Col()
-    
-class BFOptML(tb.IsDescription):
-    name = tb.StringCol(100)
-    params = BFOptMLParams()
-    # timeseries = BFOptMLTimeseries()
-    # timeseries = tb.CArray()
-    perf = BFOptMLPerf()
 
 def load_data_from_dir(args):
     expr_dir = args.datadir
@@ -54,17 +24,19 @@ def load_data_from_dir(args):
     tblfilename = "bf_optimize_mavlink.h5"
     h5file = tb.open_file(tblfilename, mode = "w",
                           title = "Baseflight optimization runs")
-    g1     = h5file.create_group(h5file.root, "%s" %args.optrun, "Optimization run params and perf")
-    g_params     = h5file.create_group(g1, "params",     "Optimization run params")
-    g_perf       = h5file.create_group(g1, "perf",       "Optimization run performance")
-    g_timeseries = h5file.create_group(g1, "timeseries", "Optimization run timeseries")
-    # table = h5file.create_table(g1, 'evaluation', BFOptML, "Single optimizer evaluation")
-    # bfoptml = table.row
+    g1     = h5file.create_group(h5file.root, "v1", "Optimization run params, perf and logdata")
+    # g1     = h5file.create_group(h5file.root, "%s" %args.optrun, "Optimization run params and perf")
+    # g_params     = h5file.create_group(g1, "params",     "Optimization run params")
+    # g_perf       = h5file.create_group(g1, "perf",       "Optimization run performance")
+    # g_timeseries = h5file.create_group(g1, "timeseries", "Optimization run timeseries")
+    # table = h5file.create_table(g1, 'evaluation', BFOptML2, "Single optimizer evaluation")
+    table = h5file.create_table(g1, 'evaluations', BFOptML, "Single optimizer evaluations")
+    bfoptml = table.row
     # print bfoptml
     print h5file
     # h5file
     
-    index2 = ["timestamp", "alt_target", "alt_mse", "vel_target", "vel_mse"]
+    # index2 = ["timestamp", "alt_target", "alt_mse", "vel_target", "vel_mse"]
     # extract timestamps
     tss = np.array([r.split("_")[3] for r in results])
     # tss = [r.split("-")[2] + "-" + r.split("-")[3].split(".")[0] for r in results]
@@ -97,37 +69,34 @@ def load_data_from_dir(args):
         # # get dataframe
         # # df_raw = pd.read_csv(resultfile)
         # # df_raw.columns = map(lambda x: x.replace(" ", ""), df_raw.columns)
+    
+        # set run ID
+        bfoptml["id"] = int(tsh5)
+        # set run params
+        bfoptml["alt_p"] = params[0]
+        bfoptml["alt_i"] = params[1]
+        bfoptml["alt_d"] = params[2]
+        bfoptml["vel_p"] = params[3]
+        bfoptml["vel_i"] = params[4]
+        bfoptml["vel_d"] = params[5]
+        # set run performance measure
+        bfoptml["alt_target"] = perf_alt[0]
+        bfoptml["alt_mse"]    = perf_alt[1]
+        bfoptml["vel_target"] = perf_vel[0]
+        bfoptml["vel_mse"]    = perf_vel[1]
+        bfoptml["mse"]        = perf_alt[1] + perf_vel[1]
+        # set run logdata
+        bfoptml["timeseries"]    = logdata
+
+        # # array style version        
+        # h5file.create_array(g_params, "_%s" % tsh5, params)
+        # h5file.create_array(g_perf, "_%s" % tsh5, perf)
+        # h5file.create_array(g_timeseries, "_%s" % tsh5, logdata)
         
-        # # set run name
-        # bfoptml["name"] = tsh5
-        # # set run params
-        # bfoptml["params/name"] = tsh5 + "_params"
-        # bfoptml["params/alt_p"] = params[0]
-        # bfoptml["params/alt_i"] = params[1]
-        # bfoptml["params/alt_d"] = params[2]
-        # bfoptml["params/vel_p"] = params[3]
-        # bfoptml["params/vel_i"] = params[4]
-        # bfoptml["params/vel_d"] = params[5]
-        # # set run perf
-        # bfoptml["perf/name"] = tsh5 + "_perf"
-        # bfoptml["perf/alt_target"] = perf_alt[0]
-        # bfoptml["perf/alt_mse"]    = perf_alt[1]
-        # bfoptml["perf/vel_target"] = perf_vel[0]
-        # bfoptml["perf/vel_mse"]    = perf_vel[1]
-        # # # set run timeseries
-        # # shape = logdata.shape
-        # # atom = tb.Float32Atom()
-        # # # atomarr = tb.CArray(atom, shape)
+        bfoptml.append()
         
-        h5file.create_array(g_params, "_%s" % tsh5, params)
-        h5file.create_array(g_perf, "_%s" % tsh5, perf)
-        h5file.create_array(g_timeseries, "_%s" % tsh5, logdata)
-        # # bfoptml["timeseries/name"] = ts + "_timeseries"
-        
-        # bfoptml.append()
-        
-    # table.flush()
-    print h5file
+    table.flush()
+    # print h5file.root.v1
     
 def plot_mse_consecutive(args):
     load_data_from_dir(args)
@@ -136,6 +105,26 @@ def plot_mse_consecutive(args):
 def convert_to_tables(args):
     load_data_from_dir(args)
     print args
+
+def read_table(args):
+    tblfilename = "bf_optimize_mavlink.h5"
+    h5file = tb.open_file(tblfilename, mode = "r")
+    # print h5file
+    # a = h5file.root
+    # print a
+    # a = h5file.get_node(where = "/20150507-run1/params/_20150507155408")
+    # print a
+    table = h5file.root.v1.evaluations
+    # mse = [x["mse"] for x in table.iterrows() if x["alt_p"] < 20.]
+    # mse = [x["mse"] for x in table.iterrows()]
+    logdata = [x["timeseries"] for x in table.iterrows() if x["mse"] < 1000]
+    # print mse
+    # pl.plot(mse)
+    print len(logdata)
+    for i in range(len(logdata)):
+        pl.subplot(len(logdata), 1, i+1)
+        pl.plot(logdata[i])
+    pl.show()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -159,3 +148,5 @@ if __name__ == "__main__":
         plot_mse_consecutive(args)
     elif args.mode == "convert_to_tables":
         convert_to_tables(args)
+    elif args.mode == "read_table":
+        read_table(args)

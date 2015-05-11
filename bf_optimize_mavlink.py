@@ -17,6 +17,8 @@ import mavlinkv10 as mavlink
 from DataSource import DataSource
 from multiwii_serial import BF_PID
 
+from bf_optimize_data import BFOptML
+
 class BaseflightOptimize(object):
     def __init__(self):
         self.dq = Queue.Queue
