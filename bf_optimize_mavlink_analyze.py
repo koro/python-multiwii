@@ -10,7 +10,8 @@ import tables as tb
 
 from bf_optimize_data import BFOptML
 
-modes = {"mse_sequential": 0, "convert_to_tables": 1}
+modes = {"mse_sequential": 0, "convert_to_tables": 1,
+         "read_table": 2, "test_for_params": 3}
 
 def load_data_from_dir(args):
     expr_dir = args.datadir
@@ -115,15 +116,52 @@ def read_table(args):
     # a = h5file.get_node(where = "/20150507-run1/params/_20150507155408")
     # print a
     table = h5file.root.v1.evaluations
+    print "table", table
     # mse = [x["mse"] for x in table.iterrows() if x["alt_p"] < 20.]
     # mse = [x["mse"] for x in table.iterrows()]
     logdata = [x["timeseries"] for x in table.iterrows() if x["mse"] < 1000]
+    # alt_pid = [(x["alt_p"], x["alt_i"], x["alt_d"]) for x in table.iterrows() if x["mse"] < 1000]
+    alt_pid = [(x["alt_p"], x["alt_i"], x["alt_d"]) for x in table.iterrows() if x["alt_p"] == 17 and x["alt_i"] == 0.]
+    print "alt_pid", alt_pid
     # print mse
     # pl.plot(mse)
     print len(logdata)
     for i in range(len(logdata)):
         pl.subplot(len(logdata), 1, i+1)
-        pl.plot(logdata[i])
+        pl.plot(logdata[i][:,1:3])
+        pl.ylim((-300, 1000))
+    pl.show()
+
+def test_for_params(args):
+    tblfilename = "bf_optimize_mavlink.h5"
+    h5file = tb.open_file(tblfilename, mode = "r")
+    table = h5file.root.v1.evaluations
+    alt_p = 17
+    alt_i = 0
+    pids = [ (x["alt_p"], x["alt_i"], x["alt_d"], x["vel_p"], x["vel_i"], x["vel_d"])
+             for x in table.where("""(alt_p == %d) & (alt_i == %d)""" % (alt_p, alt_i)) ]
+    print pids
+
+def pid_pca(args):
+    import mdp
+    tblfilename = "bf_optimize_mavlink.h5"
+    h5file = tb.open_file(tblfilename, mode = "r")
+    table = h5file.root.v1.evaluations
+    pids = [ [x["alt_p"], x["alt_i"], x["alt_d"], x["vel_p"], x["vel_i"], x["vel_d"]]
+             for x in table.iterrows() ]
+    mses = [ [x["mse"]] for x in table.iterrows() ]
+    mses_a = np.clip(np.array(mses), 0, 20000.)
+    mses_a /= np.max(mses_a)
+    pl.subplot(211)
+    pl.plot(pids)
+    pl.subplot(212)
+    pid_p = mdp.pca(np.array(pids).astype(float))
+    # [:,0:2]
+    colors = np.zeros((100, 3))
+    colors = np.hstack((colors, 1-mses_a))
+    print colors.shape
+    pl.scatter(pid_p[:,0], pid_p[:,1], color=colors)
+    # pl.scatter(pid_p[:,0], pid_p[:,1], alpha=1.)
     pl.show()
 
 if __name__ == "__main__":
@@ -150,3 +188,7 @@ if __name__ == "__main__":
         convert_to_tables(args)
     elif args.mode == "read_table":
         read_table(args)
+    elif args.mode == "test_for_params":
+        test_for_params(args)
+    elif args.mode == "pid_pca":
+        pid_pca(args)
