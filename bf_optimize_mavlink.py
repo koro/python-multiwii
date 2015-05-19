@@ -117,14 +117,14 @@ class BaseflightOptimize(object):
             time.sleep(0.1)
             return mse
 
-        # set PID values
-        # first request the values
-        for i in range(3):
-            self.ds.mavo.mav.param_request_list_send(21, 46)
-            time.sleep(0.5)
+        # # set PID values
+        # # first request the values
+        # for i in range(3):
+        #     self.ds.mavo.mav.param_request_list_send(21, 46)
+        #     time.sleep(0.5)
         
         # alt_offset = BF_PID.PIDALT*3
-        for i in range(3):
+        for i in range(2):
             self.ds.mavo.mav.param_set_send(21, 46, "P_ALT", params[0], mavlink.MAVLINK_TYPE_UINT8_T)
             self.ds.mavo.mav.param_set_send(21, 46, "I_ALT", params[1], mavlink.MAVLINK_TYPE_UINT8_T)
             self.ds.mavo.mav.param_set_send(21, 46, "D_ALT", params[2], mavlink.MAVLINK_TYPE_UINT8_T)

@@ -155,6 +155,7 @@ def pid_pca(args):
     pl.subplot(211)
     pl.plot(pids)
     pl.subplot(212)
+    # FIXME: try kernel pca on this
     pid_p = mdp.pca(np.array(pids).astype(float))
     # [:,0:2]
     colors = np.zeros((100, 3))
