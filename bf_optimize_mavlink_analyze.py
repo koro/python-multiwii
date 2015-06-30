@@ -121,8 +121,8 @@ def read_table(args):
     # mse = [x["mse"] for x in table.iterrows() if x["alt_p"] < 20.]
     # mse = [x["mse"] for x in table.iterrows()]
     logdata = [x["timeseries"] for x in table.iterrows() if x["mse"] < 2000]
-    # alt_pid = [(x["alt_p"], x["alt_i"], x["alt_d"]) for x in table.iterrows() if x["mse"] < 1000]
-    alt_pid = [(x["alt_p"], x["alt_i"], x["alt_d"]) for x in table.iterrows() if x["alt_p"] == 17 and x["alt_i"] == 0.]
+    alt_pid = [(x["alt_p"], x["alt_i"], x["alt_d"], x["vel_p"], x["vel_i"], x["vel_d"]) for x in table.iterrows() if x["mse"] < 1000]
+    # alt_pid = [(x["alt_p"], x["alt_i"], x["alt_d"]) for x in table.iterrows() if x["alt_p"] == 17 and x["alt_i"] == 0.]
     print "alt_pid", alt_pid
     # print mse
     # pl.plot(mse)
