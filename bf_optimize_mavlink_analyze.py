@@ -14,6 +14,7 @@ modes = {"mse_consecutive": 0, "convert_to_tables": 1,
          "read_table": 2, "test_for_params": 3, "pid_pca": 4,
          "plot_episode": 5, "te_alt_motor": 6}
 
+# v1 functions
 def load_data_from_dir(args):
     expr_dir = args.datadir
     results = [f for f in os.listdir(expr_dir) if f.startswith("bf_optimize_mavlink_20150507-")]
@@ -108,6 +109,17 @@ def convert_to_tables(args):
     load_data_from_dir(args)
     print args
 
+def test_for_params(args):
+    tblfilename = "bf_optimize_mavlink.h5"
+    h5file = tb.open_file(tblfilename, mode = "r")
+    table = h5file.root.v1.evaluations
+    alt_p = 17
+    alt_i = 0
+    pids = [ (x["alt_p"], x["alt_i"], x["alt_d"], x["vel_p"], x["vel_i"], x["vel_d"])
+             for x in table.where("""(alt_p == %d) & (alt_i == %d)""" % (alt_p, alt_i)) ]
+    print pids
+
+# v2 functions
 def read_table(args):
     tblfilename = "bf_optimize_mavlink.h5"
     h5file = tb.open_file(tblfilename, mode = "r")
@@ -133,16 +145,6 @@ def read_table(args):
         pl.plot(logdata[i][:,1:3])
         pl.ylim((-300, 1000))
     pl.show()
-
-def test_for_params(args):
-    tblfilename = "bf_optimize_mavlink.h5"
-    h5file = tb.open_file(tblfilename, mode = "r")
-    table = h5file.root.v1.evaluations
-    alt_p = 17
-    alt_i = 0
-    pids = [ (x["alt_p"], x["alt_i"], x["alt_d"], x["vel_p"], x["vel_i"], x["vel_d"])
-             for x in table.where("""(alt_p == %d) & (alt_i == %d)""" % (alt_p, alt_i)) ]
-    print pids
 
 def plot_episode(args):
     """Plot an episode plucked from the large h5 database"""
@@ -283,28 +285,40 @@ def pid_pca(args):
     pl.gca().set_aspect(1)
     # pl.scatter(pid_p[:,0], pid_p[:,1], alpha=1.)
     # pl.show()
-     
-    pl.subplot(211)
+
+    # plot raw pid values     
+    pl.subplot(411)
+    pl.plot(pid_array[sl,[0,3]], "o")
+    pl.xlim((sl_start - 0.2, sl_end + 0.2))
+    pl.subplot(412)
+    pl.plot(pid_array[sl,[1,4]], "o")
+    pl.xlim((sl_start - 0.2, sl_end + 0.2))
+    pl.subplot(413)
+    pl.plot(pid_array[sl,[2,5]], "o")
+
+    # plot compressed pid values: pca, ica, ...
+    # pl.subplot(211)
     # pl.plot(pid_p, ".")
     # pl.plot(pid_p[sl], "o")
-    pl.plot(pid_ica[sl] + np.random.uniform(-0.01, 0.01, size=pid_ica[sl].shape),
-            "o")
+    # pl.plot(pid_ica[sl] + np.random.uniform(-0.01, 0.01, size=pid_ica[sl].shape), "o")
     pl.xlim((sl_start - 0.2, sl_end + 0.2))
     # pl.plot(Z_kpca[:,:], "-o", label="kpca")
     # pl.plot(Z_kpca[:,:], ".", label="kpca")
     # pl.legend()
         
-    pl.subplot(212)
+    # pl.subplot(212)
+    pl.subplot(414)
     pl.plot(mses_a[sl], "ko")
     # pl.gca().set_yscale("log")
     pl.xlim((sl_start - 0.2, sl_end + 0.2))
-    # pl.show()
+    pl.show()
 
     # gp fit
     x = mses_a[sl]
     x_sup = np.atleast_2d(np.arange(0, x.shape[0])).T
     x_ones = x != 1.
-    print x, x_sup, x_ones.shape
+    x_ones[0:20] = False
+    print x, x_sup, x_ones, x_ones.shape
     print "x[x_ones]", x[x_ones].shape
     print "x_sup[x_ones]", x_sup[x_ones].shape
 
@@ -322,25 +336,140 @@ def pid_pca(args):
     from sklearn import linear_model
     clf = linear_model.Ridge (alpha = .5)
     clf.fit(x_sup[x_ones,np.newaxis], x[x_ones,np.newaxis])
-    x_pred = clf.predict(x_sup)
+    x_pred = clf.predict(x_sup[20:100])
         
     pl.subplot(111)
     pl.plot(mses_a[sl], "ko")
-    pl.plot(x_pred, "k-", alpha=0.5)
+    x_mean = np.mean(x[0:20])
+    pl.plot(np.arange(0, 20), np.ones((20, )) * x_mean, "k-", alpha=0.5)
+    pl.plot(np.arange(20, 100), x_pred, "k-", alpha=0.5)
+    pl.axhspan(0.5, 1.1, 0, 0.19, facecolor="0.5", alpha=0.25)
     # pl.plot(x_pred + sigma2_pred, "k-", alpha=0.5)
     # pl.plot(x_pred - sigma2_pred, "k-", alpha=0.5)
     # pl.gca().set_yscale("log")
     pl.xlim((sl_start - 0.2, sl_end + 0.2))
+    pl.ylim((0.5, 1.1))
+    pl.text(5, 0.6, "Random\ninitialization")
+    pl.text(40, 0.6, "Optimizer\nsuggestions")
     pl.xlabel("Episode #")
     pl.ylabel("MSE")
-    if arg.plotsave:
+    if args.plotsave:
         pl.gcf().set_size_inches((10, 3))
         pl.gcf().savefig("%s-mse.pdf" % (sys.argv[0][:-3]), dpi=300,
                         bbox_inches="tight")
     pl.show()
 
+def mse_over_dist(args):
+    tblfilename = "bf_optimize_mavlink.h5"
+    h5file = tb.open_file(tblfilename, mode = "a")
+    # table = h5file.root.v1.evaluations
+    #  get tabke handle
+    table = h5file.root.v2.evaluations
+
+    # sort rows
+    if not table.cols.mse.is_indexed:
+        table.cols.mse.createCSIndex()
+        
+    if not args.sorted:
+        pids = [ [x["alt_p"], x["alt_i"], x["alt_d"], x["vel_p"], x["vel_i"], x["vel_d"]]
+             for x in table.iterrows() ]
+        mses = [ [x["mse"]] for x in table.iterrows() ]
+    else:
+        print("sorted not supported here yet")
+
+    # initialize structures
+    pids_dists = np.zeros_like(mses)
+    mses_a = np.log(np.clip(np.array(mses), 0, 200000.))
+    mses_a /= np.max(mses_a)
+    # get best individual
+    best_index = np.argmin(mses)
+    mses_2 = np.array(mses)
+    mses_2[best_index] = np.max(mses)
+    best_2_index = np.argmin(mses_2)
+    print best_index
+    best = pids[best_index]
+    # best = pids[best_2_index]
+    print best
+    # pids_dists[best_index] = 0.
+    # compute distances
+    for i, pid in enumerate(pids):
+        # print type(pid)
+        dist = np.linalg.norm(np.asarray(pid).astype(float) - np.asarray(best).astype(float))
+        pids_dists[i] = dist
+    # plot
+    pl.plot(pids_dists+1, mses_a, "o")
+    # pl.gca().set_xscale("log")
+    pl.show()
+
+def te_pid_mse(args):
+    tblfilename = "bf_optimize_mavlink.h5"
+    h5file = tb.open_file(tblfilename, mode = "a")
+    table = h5file.root.v2.evaluations
+
+    # sort rows
+    if not table.cols.mse.is_indexed:
+        table.cols.mse.createCSIndex()
+        
+    if not args.sorted:
+        pids = [ [x["alt_p"], x["alt_i"], x["alt_d"], x["vel_p"], x["vel_i"], x["vel_d"]]
+             for x in table.iterrows() ]
+        mses = [ [x["mse"]] for x in table.iterrows() ]
+    else:
+        print("sorted not supported here yet")
+        
+    from jpype import *
+    # I think this is a bit of a hack, python users will do better on this:
+    sys.path.append("../../infodynamics-dist/demos/python")
+    
+    jarLocation = "../../infodynamics-dist/infodynamics.jar"
+    # Start the JVM (add the "-Xmx" option with say 1024M if you get crashes due to not enough memory space)
+    startJVM(getDefaultJVMPath(), "-ea", "-Djava.class.path=" + jarLocation)
+
+    # mutual information
+    # 1. Construct the calculator:
+    calcClassMI = JPackage("infodynamics.measures.continuous.kraskov").MutualInfoCalculatorMultiVariateKraskov1
+    calcMI = calcClassMI()
+    # 2. Set any properties to non-default values:
+    # calcMI.setProperty("TIME_DIFF", "1")
+    # 3. Initialise the calculator for (re-)use:
+    calcMI.initialise()
+    
+    calcClass = JPackage("infodynamics.measures.continuous.kraskov").TransferEntropyCalculatorKraskov
+    calc = calcClass()
+    # 2. Set any properties to non-default values:
+    calc.setProperty("k_HISTORY", "1")
+    # calc.setProperty("k_TAU", "2")
+    calc.setProperty("l_HISTORY", "1")
+    # calc.setProperty("l_TAU", "2")
+    # 3. Initialise the calculator for (re-)use:
+    calc.initialise()
+
+    pids_a = np.asarray(pids).astype(np.float64)
+    dest = np.asarray(mses).astype(np.float64).flatten()
+
+    print pids_a.shape
+
+    for i in range(6):
+        source = pids_a[:,i]
+        print source.shape, dest.shape
+
+        calcMI.initialise()
+        calcMI.setObservations(source, dest)
+        # 5. Compute the estimate:
+        result = calcMI.computeAverageLocalOfObservations()
+        print("mse = %f, mi = %.4f nats" % (x["mse"], result))
+
+        calc.initialise()        
+        calc.setObservations(source, dest)
+        # 5. Compute the estimate:
+        result = calc.computeAverageLocalOfObservations()
+        print("mse: %f, TE_Kraskov (KSG)(col_0 -> col_1) = %.4f nats" % (x["mse"], result))
+    
+        
 ################################################################################
 # compute transfer entropy from altitude estimate to motor over all evaluations
+# this doesn't work for the recorded run because we don't have the actual
+# throttle signal
 def te_alt_motor(args):
     """calc sensor/motor TE"""
     tblfilename = "bf_optimize_mavlink.h5"
@@ -391,6 +520,8 @@ def te_alt_motor(args):
     calc.initialise()
 
     # 4. Supply the sample data:
+    print source.dtype, dest.dtype
+    print source.shape, dest.shape
     calc.setObservations(source, dest)
     # 5. Compute the estimate:
     result = calc.computeAverageLocalOfObservations()
@@ -461,7 +592,11 @@ if __name__ == "__main__":
         pid_pca(args)
     elif args.mode == "plot_episode":
         plot_episode(args)
+    elif args.mode == "mse_over_dist":
+        mse_over_dist(args)
     elif args.mode == "te_alt_motor":
         te_alt_motor(args)
+    elif args.mode == "te_pid_mse":
+        te_pid_mse(args)
     else:
         print "unknown mode: %s" % args.mode
